@@ -149,6 +149,7 @@ C:\ProgramData\Debloat\Debloat.log
   Change 09/05/2025 - Added TrackPoint Quick Menu (Lenovo)
   Change 13/05/2025 - Fixed TrackPoint (hopefully)
   Change 04/06/2025 - Addex X-Rite for Lenovo
+  Change 06/30/2025 - Changed main code in $Bloatware from using -in operator to -like operator
 N/A
 #>
 
@@ -328,7 +329,7 @@ $NonRemovable = @(
 $appstoignore = $WhitelistedApps += $NonRemovable
 
 ##Bloat list for future reference
-$Bloatware = @(
+$BloatwarePatterns = @(
 #Unnecessary Windows 10/11 AppX Apps
 "*ActiproSoftwareLLC*"
 "*AdobeSystemsIncorporated.AdobePhotoshopExpress*"
@@ -428,39 +429,42 @@ $Bloatware = @(
 #"MicrosoftWindows.Client.WebExperience"
 )
 
+# Get all provisioned packages first
+$allProvisionedPackages = Get-AppxProvisionedPackage -Online
+$allAppxPackages = Get-AppxPackage -AllUsers
 
-$provisioned = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -in $Bloatware -and $_.DisplayName -notin $appstoignore -and $_.DisplayName -notlike 'MicrosoftWindows.Voice*' -and $_.DisplayName -notlike 'Microsoft.LanguageExperiencePack*' -and $_.DisplayName -notlike 'MicrosoftWindows.Speech*' }
-foreach ($appxprov in $provisioned) {
-    $packagename = $appxprov.PackageName
-    $displayname = $appxprov.DisplayName
-    write-output "Removing $displayname AppX Provisioning Package"
-    try {
-        Remove-AppxProvisionedPackage -PackageName $packagename -Online -ErrorAction SilentlyContinue
-        write-output "Removed $displayname AppX Provisioning Package"
-    }
-    catch {
-        write-output "Unable to remove $displayname AppX Provisioning Package"
-    }
-
-}
-
-
-$appxinstalled = Get-AppxPackage -AllUsers | Where-Object { $_.Name -in $Bloatware -and $_.Name -notin $appstoignore  -and $_.Name -notlike 'MicrosoftWindows.Voice*' -and $_.Name -notlike 'Microsoft.LanguageExperiencePack*' -and $_.Name -notlike 'MicrosoftWindows.Speech*'}
-foreach ($appxapp in $appxinstalled) {
-    $packagename = $appxapp.PackageFullName
-    $displayname = $appxapp.Name
-    write-output "$displayname AppX Package exists"
-    write-output "Removing $displayname AppX Package"
-    try {
-        Remove-AppxPackage -Package $packagename -AllUsers -ErrorAction SilentlyContinue
-        write-output "Removed $displayname AppX Package"
-    }
-    catch {
-        write-output "$displayname AppX Package does not exist"
+# Loop through each bloatware pattern
+foreach ($pattern in $BloatwarePatterns) {
+    # Find matching provisioned packages using the -like operator for wildcard support
+    $provisionedToRemove = $allProvisionedPackages | Where-Object { $_.DisplayName -like $pattern -and $_.DisplayName -notin $appstoignore -and $_.DisplayName -notlike 'MicrosoftWindows.Voice*' -and $_.DisplayName -notlike 'Microsoft.LanguageExperiencePack*' -and $_.DisplayName -notlike 'MicrosoftWindows.Speech*' }
+    foreach ($appxprov in $provisionedToRemove) {
+        $packagename = $appxprov.PackageName
+        $displayname = $appxprov.DisplayName
+        write-output "Removing $displayname AppX Provisioning Package (Matched pattern: $pattern)"
+        try {
+            Remove-AppxProvisionedPackage -PackageName $packagename -Online -ErrorAction SilentlyContinue
+            write-output "Removed $displayname AppX Provisioning Package"
+        }
+        catch {
+            write-output "Unable to remove $displayname AppX Provisioning Package"
+        }
     }
 
-
-
+    # Find matching installed packages using the -like operator for wildcard support
+    $appxToRemove = $allAppxPackages | Where-Object { $_.Name -like $pattern -and $_.Name -notin $appstoignore  -and $_.Name -notlike 'MicrosoftWindows.Voice*' -and $_.Name -notlike 'Microsoft.LanguageExperiencePack*' -and $_.Name -notlike 'MicrosoftWindows.Speech*'}
+    foreach ($appxapp in $appxToRemove) {
+        $packagename = $appxapp.PackageFullName
+        $displayname = $appxapp.Name
+        write-output "$displayname AppX Package exists (Matched pattern: $pattern)"
+        write-output "Removing $displayname AppX Package"
+        try {
+            Remove-AppxPackage -Package $packagename -AllUsers -ErrorAction SilentlyContinue
+            write-output "Removed $displayname AppX Package"
+        }
+        catch {
+            write-output "$displayname AppX Package could not be removed."
+        }
+    }
 }
 
 
